@@ -1,0 +1,16 @@
+{
+	"folders": [
+		{
+			"path": "../.."
+		},
+		{
+			"name": "Enclosure heater",
+			"path": ".."
+		},
+		{
+			"name": "Marlin",
+			"path": "../../../Marlin"
+		}
+	],
+	"settings": {}
+}
