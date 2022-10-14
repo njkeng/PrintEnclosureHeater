@@ -21,7 +21,7 @@
 #define THERMAL_PROTECTION_PERIOD     40000 // Millieconds
 #define THERMAL_PROTECTION_HYSTERESIS 4     // Degrees Celsius
 #define TEMP_RISING_RATE              10    // Degrees Celsius difference within "thermal protection period"
-#define TEMP_FALLING_RATE             4     // Degrees Celsius difference within "thermal protection period"
+#define TEMP_FALLING_RATE             2     // Degrees Celsius difference within "thermal protection period"
 
 // Thermal parameters
 #define TEMP_AIR_HYSTERESIS      3  // (°C) Temperature proximity considered "close enough" to the target
@@ -98,8 +98,8 @@
   //
   #define SENSOR_PIN_BED             A1
   #define REFERENCE_RESISTANCE_BED   4700
-//  #define NOMINAL_RESISTANCE_BED     100000
-  #define NOMINAL_RESISTANCE_BED     10000
+  #define NOMINAL_RESISTANCE_BED     100000
+//  #define NOMINAL_RESISTANCE_BED     10000
   #define NOMINAL_TEMPERATURE_BED    25
   #define B_VALUE_BED                3950
 
