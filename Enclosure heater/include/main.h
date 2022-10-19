@@ -20,8 +20,8 @@
  */
 #define THERMAL_PROTECTION_PERIOD     40000 // Millieconds
 #define THERMAL_PROTECTION_HYSTERESIS 4     // Degrees Celsius
-#define TEMP_RISING_RATE              10    // Degrees Celsius difference within "thermal protection period"
-#define TEMP_FALLING_RATE             2     // Degrees Celsius difference within "thermal protection period"
+//#define TEMP_RISING_RATE              3     // Degrees Celsius difference within "thermal protection period"
+//#define TEMP_FALLING_RATE             1     // Degrees Celsius difference within "thermal protection period"
 
 // Thermal parameters
 #define TEMP_AIR_HYSTERESIS      3  // (°C) Temperature proximity considered "close enough" to the target
@@ -63,17 +63,18 @@
  * the issues involved, don't use bed PID until someone else verifies that your hardware works.
  */
 
-#define MAX_BED_POWER 255 // limits duty cycle to bed; 255=full current
+#define MAX_BED_POWER 255 // limits duty cycle to bed; 255=full current.
+                          // Reduce this if the bed heats up too quickly
 #define MIN_BED_POWER 0
 
-// #define BED_KP 10
-// #define BED_KI 3
-// #define BED_KD 100
+#define BED_KP 1.00
+#define BED_KI 0.07
+#define BED_KD 0.50
 
 // Original values
-#define BED_KP 10.00
-#define BED_KI 0.23
-#define BED_KD 305.4
+// #define BED_KP 10.00
+// #define BED_KI 0.23
+// #define BED_KD 305.4
 
 //===========================================================================
 //==================== PID > Air Temperature Control ====================
@@ -122,10 +123,10 @@
   // Settings for spin timers
   // Times in milliseconds
   //
-  const unsigned int LCD_UPDATE_MILLIS =        1000;
-  const unsigned int EXTEND_FAN_RUNTIME =       15000;
+  const unsigned long LCD_UPDATE_MILLIS =        1000;
+  const unsigned long EXTEND_FAN_RUNTIME =       120000;
 
 
   // Main digital oputputs
-  const unsigned int bedPin = 2;  // Heated bed power control output pin
-  const unsigned int fanPin = 3;  // Heated bed fan output pin
+  const unsigned int fanPin = 2;  // Heated bed fan output pin
+  const unsigned int bedPin = 3;  // Heated bed power control output pin

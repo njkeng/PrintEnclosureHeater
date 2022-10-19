@@ -54,7 +54,8 @@ LcdKeypad* myLcdKeypad = 0;
 // Define general system variables
 bool heaterRunning = true;
 bool heaterNeeded = false;
-bool tempReached = false;
+bool airTempReached = false;
+bool bedTempReached = false;
 
 
 // Define variables for LCD menu system
@@ -65,6 +66,7 @@ bool leftKey = false;
 bool rightKey = false;
 const unsigned int numberLCDpages = 3;
 bool settingMode = false;
+bool faultResetReq = false;
 unsigned int settingValue = 0;
 unsigned int settingMax = 0;
 unsigned int settingMin = 0;
@@ -72,12 +74,13 @@ bool settingOn = true;
 enum {
   HEATER_PAGE   = 0,
   AIR_PAGE      = 1,
-  BED_PAGE      = 2
+  BED_PAGE      = 2,
+  FAULT_PAGE    = 3
 } LCDPage;
 bool airThermistorError = false;
 bool bedThermistorError = false;
-bool bedWatchdogError = false;
-bool checkBedTemp = false;
+bool thermalRunaway = false;
+bool faultActive = false;
 
 // Function to step forward through the pages in the LCD menu system
 void forwardPage()
@@ -137,13 +140,12 @@ public:
 // Variables for control of the heating element temperature
 double BedTempSP, BedTempPV, BedTempOP;
 double BedMainSP;
-double BedOldPV = BED_MINTEMP;
 
 // PID controller definition for heating element temperature
 PID BedPID(&BedTempPV, &BedTempOP, &BedTempSP, BED_KP, BED_KI, BED_KD, P_ON_M, DIRECT);
 
 // Variables for control of the air temperature
-double AirTempSP, AirTempPV, AirTempOP; 
+double AirTempSP, AirTempPV; 
 
 
 // SpinTimer library, https://github.com/dniklaus/spin-timer
@@ -164,16 +166,8 @@ SpinTimer lcdUpdate(LCD_UPDATE_MILLIS, new LCDUpdate(), SpinTimer::IS_RECURRING,
 // One-shot timer for extending the operation of the heated bed fan
 SpinTimer FanDelayOff(EXTEND_FAN_RUNTIME, 0, SpinTimer::IS_NON_RECURRING, SpinTimer::IS_NON_AUTOSTART);
 
-// Recurring timer for heated bed watchdog
-class ThermalProtectionTimer : public SpinTimerAction
-{
-public:
-  void timeExpired()
-  {
-    checkBedTemp = true;
-  }
-};
-SpinTimer thermalProtectionTimer(THERMAL_PROTECTION_PERIOD, new ThermalProtectionTimer(), SpinTimer::IS_RECURRING);
+// One-shot timer for heated bed watchdog
+SpinTimer thermalProtectionTimer(THERMAL_PROTECTION_PERIOD, 0, SpinTimer::IS_NON_RECURRING, SpinTimer::IS_NON_AUTOSTART);
 
 
 void setup() {
@@ -260,100 +254,117 @@ void loop() {
     myLcdKeypad->noBlink();
     char s[16];  // Temporary storage of numerical values for display
 
-    // Display error messages
-    // Air temperature thermistor error
-    if (airThermistorError) {
-      myLcdKeypad->print("FAULT Air Temp.");
-      myLcdKeypad->setCursor(0, 1);
-      myLcdKeypad->print("Check Thermistor");
-    } else 
-
-    // Bed temperature thermistor error
-    if (bedThermistorError) {
-      myLcdKeypad->print("FAULT Bed Temp.");
-      myLcdKeypad->setCursor(0, 1);
-      myLcdKeypad->print("Check Thermistor");
-    } else 
-
-    // Bed heating watchdog error
-    // Usually means that the bed thermistor has been mechanically
-    // disconnected from the bed
-    if (bedWatchdogError) {
-      myLcdKeypad->print("FAULT Heating");
-      myLcdKeypad->setCursor(0, 1);
-      myLcdKeypad->print("Check heated bed");
-    } else {
-
-      switch (LCDPage) {
-        // Heater on / off page
-        case HEATER_PAGE:  // Update the first page of LCD display
-          myLcdKeypad->print("Heater ");
-          if (settingMode) {
-            if (settingOn) {
-              myLcdKeypad->print("Turn ON ");
-              myLcdKeypad->print((char)127); // arrow left symbol
-              myLcdKeypad->setCursor(7, 1);
-              myLcdKeypad->print("Turn OFF");
-            } else {
-              myLcdKeypad->print("Turn ON");
-              myLcdKeypad->setCursor(7, 1);
-              myLcdKeypad->print("Turn OFF");
-              myLcdKeypad->print((char)127); // arrow left symbol
-            }
+    switch (LCDPage) {
+      // Heater on / off page
+      case HEATER_PAGE:  // Update the first page of LCD display
+        myLcdKeypad->print("Heater ");
+        if (settingMode) {
+          if (settingOn) {
+            myLcdKeypad->print("Turn ON ");
+            myLcdKeypad->print((char)127); // arrow left symbol
+            myLcdKeypad->setCursor(7, 1);
+            myLcdKeypad->print("Turn OFF");
           } else {
-            if (heaterRunning) {
-              myLcdKeypad->print("RUNNING");
-            } else {
-              myLcdKeypad->print("OFF");
-            }
-            myLcdKeypad->setCursor(0, 1);
-            myLcdKeypad->print("Air temp ");
-            myLcdKeypad->print(dtostrf(AirTempPV, 3, 1, s));
-            myLcdKeypad->print((char)223); // degree symbol
-            myLcdKeypad->print("C");
+            myLcdKeypad->print("Turn ON");
+            myLcdKeypad->setCursor(7, 1);
+            myLcdKeypad->print("Turn OFF");
+            myLcdKeypad->print((char)127); // arrow left symbol
           }
-          break;
-
-        // Air temperature page
-        case AIR_PAGE:  // Update the second page of LCD display
+        } else {
+          if (heaterRunning) {
+            myLcdKeypad->print("RUNNING");
+          } else {
+            myLcdKeypad->print("OFF");
+          }
+          myLcdKeypad->setCursor(0, 1);
           myLcdKeypad->print("Air temp ");
           myLcdKeypad->print(dtostrf(AirTempPV, 3, 1, s));
           myLcdKeypad->print((char)223); // degree symbol
           myLcdKeypad->print("C");
+        }
+        break;
 
-          myLcdKeypad->setCursor(0, 1);
-          myLcdKeypad->print("Setpoint ");
-          if (settingMode) {
-            myLcdKeypad->print(settingValue);
-            myLcdKeypad->cursor();
-            myLcdKeypad->blink();
-          } else {
-            myLcdKeypad->print(dtostrf(AirTempSP, 3, 1, s));
-            myLcdKeypad->print((char)223); // degree symbol
-            myLcdKeypad->print("C");
-          }
-          break;
+      // Air temperature page
+      case AIR_PAGE:  // Update the second page of LCD display
+        myLcdKeypad->print("Air temp ");
+        myLcdKeypad->print(dtostrf(AirTempPV, 3, 1, s));
+        myLcdKeypad->print((char)223); // degree symbol
+        myLcdKeypad->print("C");
 
-        // Bed temperature page
-        case BED_PAGE:  // Update the third page of LCD display
-          myLcdKeypad->print("Bed temp ");
-          myLcdKeypad->print(dtostrf(BedTempPV, 3, 1, s));
+        myLcdKeypad->setCursor(0, 1);
+        myLcdKeypad->print("Setpoint ");
+        if (settingMode) {
+          myLcdKeypad->print(settingValue);
+          myLcdKeypad->cursor();
+          myLcdKeypad->blink();
+        } else {
+          myLcdKeypad->print(dtostrf(AirTempSP, 3, 1, s));
           myLcdKeypad->print((char)223); // degree symbol
           myLcdKeypad->print("C");
+        }
+        break;
 
-          myLcdKeypad->setCursor(0, 1);
-          myLcdKeypad->print("Setpoint ");
-          if (settingMode) {
-            myLcdKeypad->print(settingValue);
-            myLcdKeypad->cursor();
-            myLcdKeypad->blink();
+      // Bed temperature page
+      case BED_PAGE:  // Update the third page of LCD display
+        myLcdKeypad->print("Bed temp ");
+        myLcdKeypad->print(dtostrf(BedTempPV, 3, 1, s));
+        myLcdKeypad->print((char)223); // degree symbol
+        myLcdKeypad->print("C");
+
+        myLcdKeypad->setCursor(0, 1);
+        myLcdKeypad->print("Setpoint ");
+        if (settingMode) {
+          myLcdKeypad->print(settingValue);
+          myLcdKeypad->cursor();
+          myLcdKeypad->blink();
+        } else {
+          myLcdKeypad->print(dtostrf(BedMainSP, 3, 1, s));
+          myLcdKeypad->print((char)223); // degree symbol
+          myLcdKeypad->print("C");
+        }
+        break;
+
+      // Fault page
+      case FAULT_PAGE:  // Update the FAULT page of LCD display
+        if (settingMode) {
+          myLcdKeypad->print("Fault ");
+          if (settingOn) {
+            myLcdKeypad->print("RESET ");
+            myLcdKeypad->print((char)127); // arrow left symbol
+            myLcdKeypad->setCursor(6, 1);
+            myLcdKeypad->print("Exit  ");
           } else {
-            myLcdKeypad->print(dtostrf(BedMainSP, 3, 1, s));
-            myLcdKeypad->print((char)223); // degree symbol
-            myLcdKeypad->print("C");
+            myLcdKeypad->print("RESET");
+            myLcdKeypad->setCursor(6, 1);
+            myLcdKeypad->print("Exit  ");
+            myLcdKeypad->print((char)127); // arrow left symbol
           }
-          break;
-      }
+        } else {
+          // Display error messages
+          // Air temperature thermistor error
+          if (airThermistorError) {
+            myLcdKeypad->print("FAULT Air Temp.");
+            myLcdKeypad->setCursor(0, 1);
+            myLcdKeypad->print("Check Thermistor");
+          } else 
+
+          // Bed temperature thermistor error
+          if (bedThermistorError) {
+            myLcdKeypad->print("FAULT Bed Temp.");
+            myLcdKeypad->setCursor(0, 1);
+            myLcdKeypad->print("Check Thermistor");
+          } else 
+
+          // Bed heating watchdog error
+          // Usually means that the bed thermistor has been mechanically
+          // disconnected from the bed
+          if (thermalRunaway) {
+            myLcdKeypad->print("FAULT Heating");
+            myLcdKeypad->setCursor(0, 1);
+            myLcdKeypad->print("Check heated bed");
+          }
+        }
+        break;          
     }
     updateLCD = false;
 
@@ -363,7 +374,7 @@ void loop() {
     Serial.print(" PV:");
     Serial.print(AirTempPV);
     Serial.print(" OP:");
-    Serial.print(AirTempOP);
+    Serial.print(heaterNeeded);
 
     Serial.print("      ");
     Serial.print("Bed SP: ");
@@ -385,119 +396,125 @@ void loop() {
 
     Serial.println(" ");
     
-
   }
 
-  // Only handle key presses if there are no faults
-  if (!airThermistorError and !bedThermistorError and !bedWatchdogError) {
-
-    // Actions if the UP key is pressed
-    //
-    if (upKey) {
-      if (settingMode) {
-        switch (LCDPage) {
-          case HEATER_PAGE:
-            settingOn = !settingOn;
-            break;
-          default:
-            if (settingValue < settingMax) {
-              settingValue++;
-            }
-            break;
-        }
-
-      } else {
-        backPage();
+  // Actions if the UP key is pressed
+  //
+  if (upKey) {
+    if (settingMode) {
+      switch (LCDPage) {
+        case HEATER_PAGE:
+          settingOn = !settingOn;
+          break;
+        case FAULT_PAGE:
+          settingOn = !settingOn;
+          break;
+        default:
+          if (settingValue < settingMax) {
+            settingValue++;
+          }
+          break;
       }
-      updateLCD = true;
-      upKey = false;
+
+    } else {
+      backPage();
     }
+    updateLCD = true;
+    upKey = false;
+  }
 
-    // Actions if the DOWN key is pressed
-    //
-    if (downKey) {
-      if (settingMode) {
-        switch (LCDPage) {
-          case HEATER_PAGE:
-            settingOn = !settingOn;
-            break;
-          default:
-            if (settingValue > settingMin) {
-              settingValue--;
-            }
-            break;
-        }
-
-      } else {
-        forwardPage();
+  // Actions if the DOWN key is pressed
+  //
+  if (downKey) {
+    if (settingMode) {
+      switch (LCDPage) {
+        case HEATER_PAGE:
+          settingOn = !settingOn;
+          break;
+        case FAULT_PAGE:
+          settingOn = !settingOn;
+          break;
+        default:
+          if (settingValue > settingMin) {
+            settingValue--;
+          }
+          break;
       }
-      updateLCD = true;
-      downKey = false;
+
+    } else {
+      forwardPage();
     }
+    updateLCD = true;
+    downKey = false;
+  }
 
 
-    // Actions if the LEFT key is pressed
-    //
-    if (leftKey) {
+  // Actions if the LEFT key is pressed
+  //
+  if (leftKey) {
+    settingMode = false;
+    updateLCD = true;
+    leftKey = false;
+  }
+
+
+  // Actions if the RIGHT key is pressed
+  //
+  if (rightKey) {
+    if (settingMode) {
+      // Copy temporary setpoint into the active variable
+      // Save setpoint value in EEPROM
+      switch (LCDPage)
+      {
+        case HEATER_PAGE: 
+          heaterRunning = settingOn;
+          break;
+        case AIR_PAGE: 
+          AirTempSP = settingValue;
+          EEPROM.update(0,settingValue);
+          break;
+        case BED_PAGE: 
+          BedMainSP = settingValue;
+          BedTempSP = BedMainSP;
+          EEPROM.update(2,settingValue);
+          break;
+        case FAULT_PAGE:
+          faultResetReq = settingOn;
+          break;
+      }
       settingMode = false;
-      updateLCD = true;
-      leftKey = false;
-    }
 
+    } else {
 
-    // Actions if the RIGHT key is pressed
-    //
-    if (rightKey) {
-      if (settingMode) {
-        // Copy temporary setpoint into the active variable
-        // Save setpoint value in EEPROM
-        switch (LCDPage)
-        {
-          case HEATER_PAGE: 
-            heaterRunning = settingOn;
-            break;
-          case AIR_PAGE: 
-            AirTempSP = settingValue;
-            EEPROM.update(0,settingValue);
-            break;
-          case BED_PAGE: 
-            BedMainSP = settingValue;
-            BedTempSP = BedMainSP;
-            EEPROM.update(2,settingValue);
-            break;
-        }
-        settingMode = false;
-
-      } else {
-
-        // Copy active variable into the temporary setpoint
-        switch (LCDPage)
-        {
-          case HEATER_PAGE: 
-            settingOn = heaterRunning;
-            break;
-          case AIR_PAGE: 
-            settingValue = AirTempSP;
-            settingMax = AIR_MAXTEMP;
-            settingMin = AIR_MINTEMP;
-            break;
-          case BED_PAGE: 
-            settingValue = BedMainSP;
-            settingMax = BED_MAXTEMP;
-            settingMin = BED_MINTEMP;
-            break;
-        }
-        settingMode = true;
+      // Copy active variable into the temporary setpoint
+      switch (LCDPage)
+      {
+        case HEATER_PAGE: 
+          settingOn = heaterRunning;
+          break;
+        case AIR_PAGE: 
+          settingValue = AirTempSP;
+          settingMax = AIR_MAXTEMP;
+          settingMin = AIR_MINTEMP;
+          break;
+        case BED_PAGE: 
+          settingValue = BedMainSP;
+          settingMax = BED_MAXTEMP;
+          settingMin = BED_MINTEMP;
+          break;
+        case FAULT_PAGE: 
+          settingOn = faultResetReq;
+          break;
       }
-      updateLCD = true;
-      rightKey = false;
+      settingMode = true;
     }
-
+    updateLCD = true;
+    rightKey = false;
   }
 
   // Control the heated bed fan
   // Fan runs if the heater is ON or if the off delay timer is still running
-  if (heaterRunning ) FanDelayOff.start();
+  if (heaterRunning or (BedTempPV > BedTempSP)) FanDelayOff.start();
   digitalWrite(fanPin, FanDelayOff.isRunning());
 
 
@@ -511,26 +528,22 @@ void loop() {
   if (AirTempPV < AIR_MINTEMP) {
       airThermistorError = true;
       heaterRunning = false;
-  } else {
-      airThermistorError = false;
-  }
+  } 
 
   // Bed temperature thermistor
   if (BedTempPV < BED_MINTEMP) {
       bedThermistorError = true;
       heaterRunning = false;
-  } else {
-      bedThermistorError = false;
-  }
+  } 
 
   // Check for air temperature within hysteresis bounds
   // Air temp is increasing
-  if (AirTempPV >= AirTempSP and !tempReached) {
-    tempReached = true;
+  if (AirTempPV >= AirTempSP and !airTempReached) {
+    airTempReached = true;
   }
   // Air temp is decreasing
-  if ((AirTempPV < (AirTempSP - TEMP_AIR_HYSTERESIS)) and tempReached) {
-    tempReached = false;
+  if ((AirTempPV < (AirTempSP - TEMP_AIR_HYSTERESIS)) and airTempReached) {
+    airTempReached = false;
   }
   // Air temp is below SP
   if (AirTempPV < AirTempSP) {
@@ -538,7 +551,7 @@ void loop() {
   }
 
   // Control state of the bed PID
-  if (heaterRunning and heaterNeeded and !tempReached) {
+  if (heaterRunning and heaterNeeded and !airTempReached) {
     // Compute the air temperature PID
     BedPID.SetMode(AUTOMATIC);
   } else { // If heater is not running
@@ -552,49 +565,44 @@ void loop() {
   analogWrite(bedPin, BedTempOP);
 
 
-  // Check for heater watchdog error
-  // This is to safeguard against the bed thermistor being
-  // mechanically disconnected from the bed
-  // If the difference between the SP and the PV is within the
-  // acceptable window, we assume everything is fine.
+  // If the heater is running, check for the bed getting up to temperature
   if (BedPID.GetMode() != 0) {
-    if (abs(BedTempPV - BedTempSP) > THERMAL_PROTECTION_HYSTERESIS) {
-      // Run the thermal protection watchdog timer.  Do not restart if it is already running.
-      if (!thermalProtectionTimer.isRunning()) {
-        thermalProtectionTimer.start();
+    if (!bedTempReached){
+      if (abs(BedTempSP - BedTempPV) < THERMAL_PROTECTION_HYSTERESIS) {
+        bedTempReached = true;
       }
-    } 
+    }
   } else {
-      thermalProtectionTimer.cancel();
+      bedTempReached = false;
   }
 
-  // If the heated bed PV is a long way below the SP, check for increasing temperature
-  // at least at the specified rate. 
-  // Else if the heated bed PV is a long way above the SP, check for decreasing temperature
-  // at least at the specified rate. 
-  //
-  if (checkBedTemp) {
-    // Check if the temperature should be rising
-    if (BedTempPV < BedTempSP) {
-      // Check if the rate of change is too low
-      if (BedTempPV - BedOldPV < TEMP_RISING_RATE) {
-        bedWatchdogError = true;
-        heaterRunning = false;
-      }
-    }
 
-    // Check if the temperature should be falling
-    if (BedTempPV > BedTempSP) {
-      // Check if the rate of change is too low
-      if (BedOldPV - BedTempPV < TEMP_FALLING_RATE) {
-        bedWatchdogError = true;
-        heaterRunning = false;
-      }
-    }
+  // Check for air temperature too low
+  // This usually means that the heated bed thermistor
+  // has fallen off the heated bed.  This is a fire risk
+  if (bedTempReached and (abs(BedTempSP - BedTempPV) < THERMAL_PROTECTION_HYSTERESIS)) {
+    thermalProtectionTimer.start();
+  }
 
-    // Store current PV for next check
-    BedOldPV = BedTempPV;
-    checkBedTemp = false;
+  if (thermalProtectionTimer.isExpired()) {
+        thermalRunaway = true;
+        heaterRunning = false;
+  }
+
+  //Check for a fault reset request
+  if (faultResetReq) {
+    faultActive = false;
+    bedTempReached = false;
+    airThermistorError = false;
+    bedThermistorError = false;
+    LCDPage = HEATER_PAGE;
+    faultResetReq = false;
+  }
+
+  //Check for any active faults  
+  if (!faultActive and  (airThermistorError or bedThermistorError or thermalRunaway)) {
+    faultActive = true;
+    LCDPage = FAULT_PAGE;
   }
 
 }
