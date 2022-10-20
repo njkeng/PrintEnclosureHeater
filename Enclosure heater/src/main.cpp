@@ -136,7 +136,7 @@ public:
 
 #include <PID_v1.h>
 
-//Define PID Variables we'll be connecting to
+// Define PID Variables we'll be connecting to
 // Variables for control of the heating element temperature
 double BedTempSP, BedTempPV, BedTempOP;
 double BedMainSP;
@@ -196,12 +196,16 @@ void setup() {
     DELAY_TIME
    );
 
-  thermistor_bed = new NTC_Thermistor(
+  thermistor_bed = new AverageThermistor(
+    new NTC_Thermistor(
     SENSOR_PIN_BED,
     REFERENCE_RESISTANCE_BED,
     NOMINAL_RESISTANCE_BED,
     NOMINAL_TEMPERATURE_BED,
     B_VALUE_BED
+    ),
+    READINGS_NUMBER,
+    DELAY_TIME
   );
 
   // Read initial thermistor temperatures
@@ -382,8 +386,8 @@ void loop() {
     Serial.print(" PV:");
     Serial.print(BedTempPV);
     Serial.print(" OP:");
-    Serial.print(BedTempOP);
-    Serial.print(" Mode:");
+    Serial.print(BedTempOP*100/255);
+    Serial.print("% Mode:");
     Serial.print(BedPID.GetMode());
     
     Serial.print("      ");
@@ -477,6 +481,8 @@ void loop() {
           BedMainSP = settingValue;
           BedTempSP = BedMainSP;
           EEPROM.update(2,settingValue);
+          bedTempReached = false;
+          thermalProtectionTimer.cancel();
           break;
         case FAULT_PAGE:
           faultResetReq = settingOn;
@@ -557,6 +563,7 @@ void loop() {
   } else { // If heater is not running
     BedPID.SetMode(MANUAL);
     BedTempOP = 0;
+    thermalProtectionTimer.cancel();
   }
 
 
@@ -568,7 +575,7 @@ void loop() {
   // If the heater is running, check for the bed getting up to temperature
   if (BedPID.GetMode() != 0) {
     if (!bedTempReached){
-      if (abs(BedTempSP - BedTempPV) < THERMAL_PROTECTION_HYSTERESIS) {
+      if (abs(BedTempSP - BedTempPV) < TEMP_BED_HYSTERESIS) {
         bedTempReached = true;
       }
     }
@@ -595,6 +602,7 @@ void loop() {
     bedTempReached = false;
     airThermistorError = false;
     bedThermistorError = false;
+    thermalRunaway = false;
     LCDPage = HEATER_PAGE;
     faultResetReq = false;
   }

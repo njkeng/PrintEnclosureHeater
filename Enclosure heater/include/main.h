@@ -25,6 +25,7 @@
 
 // Thermal parameters
 #define TEMP_AIR_HYSTERESIS      3  // (°C) Temperature proximity considered "close enough" to the target
+#define TEMP_BED_HYSTERESIS      2  // (°C) Temperature proximity considered "close enough" to the target
 
 // Below this temperature the heater will be switched off
 // because it probably indicates a broken thermistor wire.
@@ -67,9 +68,15 @@
                           // Reduce this if the bed heats up too quickly
 #define MIN_BED_POWER 0
 
-#define BED_KP 1.00
-#define BED_KI 0.07
-#define BED_KD 0.50
+// Too slow??
+//#define BED_KP 1.00
+//#define BED_KI 0.07
+//#define BED_KD 0.50
+
+// Tuning
+#define BED_KP 200.0 // Close now!
+#define BED_KI 10.0  // Close now!
+#define BED_KD 0.00  // Needs work??
 
 // Original values
 // #define BED_KP 10.00
