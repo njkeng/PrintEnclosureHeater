@@ -524,7 +524,6 @@ void loop() {
   digitalWrite(fanPin, FanDelayOff.isRunning());
 
 
-  // Control the heated bed
   // Read thermistor temperature values
   AirTempPV = thermistor_air->readCelsius();
   BedTempPV = thermistor_bed->readCelsius();
